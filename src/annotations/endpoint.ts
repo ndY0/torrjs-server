@@ -1,10 +1,11 @@
 import { GenEndpoint } from "../interfaces/genendpoint";
-import { keyForServerPort } from "../utils/symbols";
+import { keyForServerPort, keyForSocketServerPort } from "../utils/symbols";
 import { TransportEmitter } from "torrjs-core/src/transports/interface";
 
 function Endpoint(
   transport: TransportEmitter,
-  port: number,
+  port?: number,
+  socketPort?: number,
   externalTransports?: { [key: string]: TransportEmitter } & {
     internal?: never;
   }
@@ -13,7 +14,13 @@ function Endpoint(
     Reflect.defineProperty(constructor, keyForServerPort, {
       configurable: false,
       enumerable: true,
-      value: port,
+      value: port || 80,
+      writable: false,
+    });
+    Reflect.defineProperty(constructor, keyForSocketServerPort, {
+      configurable: false,
+      enumerable: true,
+      value: socketPort || 3000,
       writable: false,
     });
     Reflect.defineProperty(constructor, "eventEmitter", {

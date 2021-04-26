@@ -1,4 +1,5 @@
 import { Server } from "http";
+import { Server as SocketServer } from "socket.io";
 import { GenServer } from "torrjs-core/src/interfaces/genserver";
 import { GenSupervisor } from "torrjs-core/src/interfaces/gensupervisor";
 import EventEmitter from "events";
@@ -18,15 +19,26 @@ import {
   putMemoValue,
 } from "torrjs-core/src/utils";
 import { ChildSpec, RestartStrategy } from "torrjs-core/src/supervision/types";
-import { keyForServer, keyForServerPort } from "../utils/symbols";
-import { buildExpressApp } from "../utils";
+import {
+  keyForServer,
+  keyForServerPort,
+  keyForSocketServer,
+  keyForSocketServerPort,
+} from "../utils/symbols";
+import { buildExpressApp, buildSocketServer } from "../utils";
+import { GenChannel } from "./genchannel";
 
 abstract class GenEndpoint extends GenSupervisor {
   public [keyForServer]: Server;
+  public [keyForSocketServer]: Server;
   public static [keyForServerPort]: number;
+  public static [keyForSocketServerPort]: number;
   protected abstract children(): AsyncGenerator<
     unknown,
-    (typeof GenRouter & (new () => GenRouter))[],
+    (
+      | (typeof GenRouter & (new () => GenRouter))
+      | (typeof GenChannel & (new () => GenChannel))
+    )[],
     unknown
   >;
   public async *start<U extends typeof GenServer, V extends typeof GenEndpoint>(
@@ -66,18 +78,48 @@ abstract class GenEndpoint extends GenSupervisor {
       canceler
     );
     const combinedCancelerPromise = getMemoPromise(combinedCanceler);
-    combinedCancelerPromise.then((_) => {
-      this[keyForServer].close();
-    });
     const childSpecs = yield* this.init();
-    this[keyForServer] = buildExpressApp(childSpecs).listen(
-      (<V>(<unknown>context))[keyForServerPort]
+    const httpServers = childSpecs.filter(
+      (
+        spec: [
+          typeof GenRouter | typeof GenChannel,
+          GenRouter | GenChannel,
+          ChildSpec,
+          Generator<[boolean, EventEmitter], never, boolean>
+        ]
+      ) => spec[1] instanceof GenRouter
     );
+    const socketServers = childSpecs.filter(
+      (
+        spec: [
+          typeof GenRouter | typeof GenChannel,
+          GenRouter | GenChannel,
+          ChildSpec,
+          Generator<[boolean, EventEmitter], never, boolean>
+        ]
+      ) => spec[1] instanceof GenChannel
+    );
+    if (httpServers.length > 0) {
+      this[keyForServer] = buildExpressApp(httpServers).listen(
+        (<V>(<unknown>context))[keyForServerPort]
+      );
+      combinedCancelerPromise.then((_) => {
+        this[keyForServer].close();
+      });
+    }
+    if (socketServers.length > 0) {
+      this[keyForSocketServer] = buildSocketServer(socketServers).listen(
+        (<V>(<unknown>context))[keyForSocketServerPort]
+      );
+      combinedCancelerPromise.then((_) => {
+        this[keyForSocketServer].close();
+      });
+    }
     this[keyForSupervisedChidren] = childSpecs.map(
       (
         childSpecs: [
-          typeof GenRouter,
-          GenRouter,
+          typeof GenRouter | typeof GenChannel,
+          GenRouter | GenChannel,
           ChildSpec,
           Generator<[boolean, EventEmitter], never, boolean>
         ]

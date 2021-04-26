@@ -1,23 +1,23 @@
+import { InMemoryEmitter } from "torrjs-core/src/transports/in-memory-emitter";
+import { SocketIoMiddleware } from "../utils/types";
+import { GenChannel } from "../interfaces/genchannel";
 import {
   keyForMetadataMapSymbol,
   keyForMapSymbol,
 } from "torrjs-core/src/utils/symbols";
-import { InMemoryEmitter } from "torrjs-core/src/transports/in-memory-emitter";
-import { GenRouter } from "../interfaces/genrouter";
-import { ExpressMiddleware, HttpVerb } from "../utils/types";
 import {
-  keyForMetadataRouteMap,
-  keyForRouteMap,
-  keyForBasePath,
+  keyForNamespace,
   keyForBaseMiddlewares,
+  keyForMetadataGateMap,
+  keyForGateMap,
 } from "../utils/symbols";
 
-function Router(
+function Channel(
   transport: InMemoryEmitter,
-  basePath: string,
-  middlewares?: ExpressMiddleware[]
+  namespace: string,
+  middlewares?: SocketIoMiddleware[]
 ) {
-  return <T extends typeof GenRouter>(constructor: T) => {
+  return <T extends typeof GenChannel>(constructor: T) => {
     const map: Map<string, string> =
       Reflect.getOwnMetadata(keyForMetadataMapSymbol, constructor.prototype) ||
       new Map();
@@ -28,23 +28,23 @@ function Router(
       writable: false,
     });
     Reflect.deleteMetadata(keyForMetadataMapSymbol, constructor.prototype);
-    const mapRoute: Map<
+    const mapGate: Map<
       string,
-      { verb: HttpVerb; route: string; middlewares: ExpressMiddleware[] }
+      { event: string; middlewares: SocketIoMiddleware[] }
     > =
-      Reflect.getOwnMetadata(keyForMetadataRouteMap, constructor.prototype) ||
+      Reflect.getOwnMetadata(keyForMetadataGateMap, constructor.prototype) ||
       new Map();
-    Reflect.defineProperty(constructor, keyForRouteMap, {
+    Reflect.defineProperty(constructor, keyForGateMap, {
       configurable: false,
       enumerable: true,
-      value: mapRoute,
+      value: mapGate,
       writable: false,
     });
-    Reflect.deleteMetadata(keyForMetadataRouteMap, constructor.prototype);
-    Reflect.defineProperty(constructor, keyForBasePath, {
+    Reflect.deleteMetadata(keyForMetadataGateMap, constructor.prototype);
+    Reflect.defineProperty(constructor, keyForNamespace, {
       configurable: false,
       enumerable: true,
-      value: basePath,
+      value: namespace,
       writable: false,
     });
     Reflect.defineProperty(constructor, keyForBaseMiddlewares, {
@@ -62,4 +62,4 @@ function Router(
   };
 }
 
-export { Router };
+export { Channel };
